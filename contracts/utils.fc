@@ -1,0 +1,20 @@
+#include "imports/stdlib.fc";
+
+cell calculate_nft_seller_state_init(cell nft_seller_code, slice master_address, slice buyer_address, slice nft_address) {
+    cell data = begin_cell()
+        .store_uint(0, 1) ;; initiated trade flag
+        .store_slice(master_address)
+        .store_slice(buyer_address)
+        .store_slice(nft_address)
+        .end_cell();
+
+    return begin_cell().store_uint(0, 2).store_dict(nft_seller_code).store_dict(data).store_uint(0, 1).end_cell();
+}
+
+slice calculate_nft_seller_address(int wc, cell state_init) {
+    return begin_cell().store_uint(4, 3)
+                     .store_int(wc, 8)
+                     .store_uint(cell_hash(state_init), 256)
+                     .end_cell()
+                     .begin_parse();
+}
