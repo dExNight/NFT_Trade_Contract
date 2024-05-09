@@ -1,33 +1,68 @@
 #include "imports/stdlib.fc";
+#include "op-codes.fc";
 
 int min_tons_for_storage() asm "50000000 PUSHINT"; ;; 0.05 TON
+int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
 
 ;; Initiated contract means that bid for NFT item is made, but not yet accepted by seller
-(int, slice, slice, int) load_data() {
+(int, slice, slice, slice, int, int, int, slice) load_data() {
     slice ds = get_data().begin_parse();
     
     int init? = ds~load_uint(1);
 
-    if (~ init?) {
+    slice mc_address = ds~load_msg_addr(); ;; master contract address
+    slice nft_buyer_address = ds~load_msg_addr(); ;; nft buyer address
+    slice nft_item_address = ds~load_msg_addr(); ;; nft item address
+
+    ifnot (init?) {   
         return (
-            init?, ;; initiated trade flag
-            ds~load_msg_addr(), ;; master contract address
-            ds~load_msg_addr(), ;; nft buyer address
-            ds~load_msg_addr(), ;; nft item address
-            null() ;; nft price
+            init?,
+            mc_address,
+            nft_buyer_address,
+            nft_item_address,
+            null(),
+            null(),
+            null(),
+            null()
+        );
+    }
+
+    int nft_price = ds~load_coins(); ;; nft price
+    int trade_fee = ds~load_coins(); ;; trade fee
+
+    cell finilization_cell = ds~load_ref();
+    slice fcs = finilization_cell.begin_parse();
+
+    int trade_finalized = fcs~load_uint(1);
+
+    ifnot (trade_finalized) {
+        return (
+            init?,
+            mc_address,
+            nft_buyer_address,
+            nft_item_address,
+            nft_price,
+            trade_fee,
+            trade_finalized,
+            null()
         );
     }
 
     return (
         init?,
-        ds~load_msg_addr(),
-        ds~load_msg_addr(),
-        ds~load_msg_addr(),
-        ds~load_coins()
+        mc_address,
+        nft_buyer_address,
+        nft_item_address,
+        nft_price,
+        trade_fee,
+        trade_finalized,
+        fcs~load_msg_addr() ;; nft seller address
     );
 }
 
-() store_data(int init?, slice master_address, slice nft_buyer_address, slice nft_item_address, int nft_price) impure {
+() store_data(int init?, slice master_address, slice nft_buyer_address, slice nft_item_address, int nft_price, int trade_fee, int trade_finilized, slice nft_seller) impure {
+    cell finilization_cell = begin_cell().store_uint(trade_finilized, 1).store_slice(nft_seller).end_cell();
+    
     set_data(
         begin_cell()
         .store_uint(init?, 1)
@@ -35,8 +70,60 @@ int min_tons_for_storage() asm "50000000 PUSHINT"; ;; 0.05 TON
         .store_slice(nft_buyer_address)
         .store_slice(nft_item_address)
         .store_coins(nft_price)
+        .store_coins(trade_fee)
+        .store_ref(finilization_cell)
         .end_cell()
     );
+}
+
+() finish_trade(int my_balance, slice ms_address, slice nft_buyer, slice nft_item, slice admin_address) impure {
+    int forward_amount = my_balance - min_tons_for_storage();
+
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(admin_address)
+            .store_coins(forward_amount)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 32)
+            .store_slice("Closed Trade Notification");
+
+    send_raw_message(msg.end_cell(), 0);
+
+    set_data(
+        begin_cell()
+        .store_uint(0, 1)
+        .store_slice(ms_address)
+        .store_slice(nft_buyer)
+        .store_slice(nft_item)
+        .end_cell()
+    );
+    return();
+}
+
+() return_trade_bid(int my_balance, slice ms_address, slice nft_buyer, slice nft_item, int nft_price) impure {
+    int forward_amount = min(my_balance - min_tons_for_storage(), nft_price);
+
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(nft_buyer)
+            .store_coins(forward_amount)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 32)
+            .store_slice("Trade bid canceled");
+    
+    send_raw_message(msg.end_cell(), 0);
+
+    ;; store_data(0, ms_address, nft_buyer, nft_item, null(), null(), null(), null());
+
+    set_data(
+        begin_cell()
+        .store_uint(0, 1)
+        .store_slice(ms_address)
+        .store_slice(nft_buyer)
+        .store_slice(nft_item)
+        .end_cell()
+    );
+    return();
 }
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
@@ -52,7 +139,7 @@ int min_tons_for_storage() asm "50000000 PUSHINT"; ;; 0.05 TON
 
     slice sender_address = cell_slice~load_msg_addr();
 
-    (int init?, slice master_address, slice nft_buyer_address, slice nft_item_address, int nft_price) = load_data();
+    (int init?, slice master_address, slice nft_buyer_address, slice nft_item_address, int nft_price, int trade_fee, int trade_finilized, slice nft_seller) = load_data();
     
     int op = in_msg_body~load_uint(32);
     int query_id = in_msg_body~load_uint(64);
@@ -79,49 +166,96 @@ int min_tons_for_storage() asm "50000000 PUSHINT"; ;; 0.05 TON
             send_raw_message(msg.end_cell(), 0);
             return();
         }
-
-        cell_slice~load_msg_addr(); ;; skip dst
-        cell_slice~load_coins(); ;; skip value
-        cell_slice~skip_bits(1); ;; skip extracurrency collection
-        cell_slice~load_coins(); ;; skip ihr_fee
-        int fwd_fee = muldiv(cell_slice~load_coins(), 3, 2);
         
         int nft_price_to_set = in_msg_body~load_coins();
-        throw_unless(777, forward_amount >= nft_price_to_set + fwd_fee);
+        int trade_fee_to_set = in_msg_body~load_coins();
 
-        store_data(1, master_address, nft_buyer_address, nft_item_address, nft_price_to_set);
+        throw_unless(777, forward_amount > nft_price_to_set - trade_fee_to_set); ;; это гарантируется
+
+        store_data(1, master_address, nft_buyer_address, nft_item_address, nft_price_to_set, trade_fee_to_set, 0, my_address());
 
         return();
     }
     
     if (op == op::ownership_assigned()) {
         throw_unless(555, equal_slices(nft_item_address, sender_address));
+        throw_unless(333, init?);
+        throw_if(666, trade_finilized);
+
+        throw_unless(777, my_balance > nft_price - trade_fee);
 
         slice previous_owner = in_msg_body~load_msg_addr();
 
+        store_data(1, master_address, nft_buyer_address, nft_item_address, nft_price, trade_fee, 1, previous_owner);
+
+        ;; TODO send nft to buyer
+
+        var msg_body = begin_cell()
+                .store_uint(op::transfer(), 32)
+                .store_uint(query_id, 64) ;; save query id
+                .store_slice(nft_buyer_address)
+                .store_slice(my_address())
+                .store_uint(0, 1)
+                .store_coins(nft_forward_amount())
+                .store_slice(in_msg_body) ;; to be checked
+                .end_cell();
+        
+        var send_nft_msg = begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(nft_item_address)
+                .store_coins(my_balance - (nft_price - trade_fee))
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
+                .store_uint(1, 1)
+                .store_ref(msg_body);
+
+        send_raw_message(send_nft_msg.end_cell(), 0);
+
+        return();
+    }
+    
+    ;; NFT transfered successfully
+    if (op == op::excesses()) {
+        throw_unless(555, equal_slices(nft_item_address, sender_address));
+        throw_unless(333, init?);
+        throw_unless(666, trade_finilized);
+
+        throw_unless(777, my_balance > nft_price - trade_fee);
+        
         var send_money_msg = begin_cell()
                 .store_uint(0x18, 6)
-                .store_slice(previous_owner)
-                .store_coins(nft_price)
+                .store_slice(nft_seller)
+                .store_coins(nft_price - trade_fee)
                 .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
                 .store_uint(0, 32)
                 .store_slice("You have successfully sold NFT item");
 
         send_raw_message(send_money_msg.end_cell(), 1);
 
-        ;; TODO send nft to buyer
+        cell_slice~load_msg_addr(); ;; skip dst
+        cell_slice~load_coins(); ;; skip value
+        cell_slice~skip_bits(1); ;; skip extracurrency collection
+        cell_slice~load_coins(); ;; skip ihr_fee
+        int fwd_fee = muldiv(cell_slice~load_coins(), 3, 2); ;; we use message fwd_fee for estimation of forward_payload costs
 
-        var send_nft_msg = begin_cell()
-                .store_uint(0x18, 6)
-                .store_slice(nft_item_address)
-                .store_coins(forward_amount)
-                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-                .store_uint(0, 32)
-                .store_slice("You have successfully sold NFT item");
-
-        send_raw_message(send_nft_msg.end_cell(), 1);
-
-
+        finish_trade((my_balance - (nft_price - trade_fee) - fwd_fee), master_address, nft_buyer_address, nft_item_address, master_address);
+        return();
     }
-    
+
+    ;; TODO cancel bid
+    if (op == op::cancel_trade()) {
+        throw_unless(999, equal_slices(sender_address, master_address));
+        throw_unless(333, init?);
+        throw_if(666, trade_finilized);
+        
+        return_trade_bid(my_balance, master_address, nft_buyer_address, nft_item_address, nft_price);
+        return();
+    }
+
+    throw(999);
+}
+
+(int, slice, slice, slice, int, int, int, slice) get_trade_data() method_id {
+    (int init?, slice master_address, slice nft_buyer_address, slice nft_item_address, int nft_price, int trade_fee, int trade_finilized, slice nft_seller) = load_data();
+
+    return (init?, master_address, nft_buyer_address, nft_item_address, nft_price, trade_fee, trade_finilized, nft_seller);
 }

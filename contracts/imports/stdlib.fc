@@ -445,7 +445,7 @@ builder store_dict(builder b, cell c) asm(c b) "STDICT";
 ;;; otherwise store 1 true bit and ref to cell
 builder store_maybe_ref(builder b, cell c) asm(c b) "STOPTREF";
 
-
+int builder_null?(builder b) asm "ISNULL";
 {-
   # Address manipulation primitives
   The address manipulation primitives listed below serialize and deserialize values according to the following TL-B scheme:
