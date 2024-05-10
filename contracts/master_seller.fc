@@ -127,6 +127,17 @@ int min_nft_price() asm "100000000 PUSHINT"; ;; 0.1 TON
     }
 
     if (op == op::finished_trade_notification()) {
+        ;; Accept message only from Trade contracts
+
+        slice trade_data_slice = in_msg_body~load_ref().begin_parse();
+        trade_data_slice~load_uint(1); ;; skip init?
+        trade_data_slice~load_msg_addr(); ;; skip nft_seller_address
+
+        cell state_init = calculate_nft_seller_state_init(nft_seller_code, my_address(), trade_data_slice~load_msg_addr(), trade_data_slice~load_msg_addr());
+        slice nft_trade_contract_address = calculate_nft_seller_address(workchain(), state_init);
+
+        throw_unless(404, equal_slices(nft_trade_contract_address, sender_address));
+
         int forward_amount = msg_value;
         int contract_balance_before = my_balance - msg_value;
 

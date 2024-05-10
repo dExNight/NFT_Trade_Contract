@@ -4,12 +4,11 @@ import { TonClient4 } from '@ton/ton';
 import qs from 'qs';
 import qrcode from 'qrcode-terminal';
 
-const tradeContractAddress: Address = Address.parse("kQCR0vy-P5FRzCmi3uZ7o4jqEVsGi_z8w2SvMs2kOnkBFmBl");
+const contractAddress: Address = Address.parse('EQBRG0MxHGJBeHXqdshxPjsaYrVTdEWSQKe31GftpQq5uRFk');
 const nft_address: Address = Address.parse('EQCBqoGGtvNaIJkj22j3W-_X5NoxT6clMpD79OoMIN1WNvBE');
-const nft_owner: Address = Address.parse('0QCE6FJD8ZnCCp9ImNGPnf0W0Jp8Qr8TPpg-njUR26dOKB3z');
 
 async function onchainTestScript() {
-    console.log('Trade Contract address : ', tradeContractAddress);
+    console.log('Contract address : ', contractAddress);
 
     // Client configuration
     const endpoint = await getHttpV4Endpoint({
@@ -18,7 +17,7 @@ async function onchainTestScript() {
     const client4 = new TonClient4({ endpoint });
 
     let latestBlock = await client4.getLastBlock();
-    let status = await client4.getAccount(latestBlock.last.seqno, nft_address);
+    let status = await client4.getAccount(latestBlock.last.seqno, contractAddress);
 
     if (status.account.state.type !== 'active') {
         console.log('Contract is not active');
@@ -26,32 +25,22 @@ async function onchainTestScript() {
     }
 
     // QR-code for deposit to participating in raffle generation
-    const nft_item_address: string = nft_address.toString({ testOnly: true });
+    const contract_address: string = contractAddress.toString({ testOnly: true });
 
-    const forward_amount: number = 0.01;
+    const msg_body = beginCell().storeUint(0x05438d94, 32).storeUint(123, 64).storeAddress(nft_address).endCell();
 
-    const msg_body = beginCell()
-        .storeUint(0x5fcc3d14, 32) // op_code
-        .storeUint(123, 64) // query_id
-        .storeAddress(tradeContractAddress)
-        .storeAddress(nft_owner)
-        .storeUint(0, 1)
-        .storeCoins(toNano(forward_amount))
-        .storeUint(1, 1)
-        .endCell();
-
-    const tons_to_send = toNano(0.1);
+    const tons_to_send = toNano(0.015);
 
     let link =
         `https://app.tonkeeper.com/transfer/` +
-        nft_item_address +
+        contract_address +
         '?' +
         qs.stringify({
             amount: tons_to_send.toString(10),
             bin: msg_body.toBoc({ idx: false }).toString('base64'),
         });
 
-    console.log('Scan QR-code to send NFT item');
+    console.log('Scan QR-code to cancel Trade');
     qrcode.generate(link, { small: true }, (code) => {
         console.log(code);
     });

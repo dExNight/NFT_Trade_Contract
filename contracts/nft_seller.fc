@@ -79,23 +79,26 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
 () finish_trade(int my_balance, slice ms_address, slice nft_buyer, slice nft_item, int query_id) impure {
     int forward_amount = my_balance - min_tons_for_storage();
 
+    cell initial_data_cell = begin_cell()
+        .store_uint(0, 1)
+        .store_slice(ms_address)
+        .store_slice(nft_buyer)
+        .store_slice(nft_item)
+        .end_cell();
+
     var msg = begin_cell()
             .store_uint(0x18, 6)
             .store_slice(ms_address)
             .store_coins(forward_amount)
             .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
             .store_uint(op::finished_trade_notification(), 32)
-            .store_uint(query_id, 64);
+            .store_uint(query_id, 64)
+            .store_ref(initial_data_cell);
 
     send_raw_message(msg.end_cell(), 0);
 
     set_data(
-        begin_cell()
-        .store_uint(0, 1)
-        .store_slice(ms_address)
-        .store_slice(nft_buyer)
-        .store_slice(nft_item)
-        .end_cell()
+        initial_data_cell
     );
     return();
 }

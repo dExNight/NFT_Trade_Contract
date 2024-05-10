@@ -4,9 +4,10 @@ import { TonClient4 } from '@ton/ton';
 import qs from 'qs';
 import qrcode from 'qrcode-terminal';
 
-const adminAddress: Address = Address.parse('0QAAeHjRVfqPfRIjkPlxcv-OAffJUfAxWSu6RFli4FUeUCRn');
-const contractAddress: Address = Address.parse('EQB0Q3nSlNCiijuOxhfceIwhGhQDqEBBCjiYjM7T5_ssbw-G');
-const nft_address: Address = Address.parse('EQCydlfkhqDBcrCvsSJEpUMHoOb1Xs2SeWCCcQKktpY7ll2Y');
+const contractAddress: Address = Address.parse('EQBRG0MxHGJBeHXqdshxPjsaYrVTdEWSQKe31GftpQq5uRFk');
+const nft_address: Address = Address.parse('EQCBqoGGtvNaIJkj22j3W-_X5NoxT6clMpD79OoMIN1WNvBE');
+
+const buyerAddress = Address.parse('0QCqVeyHMmYKvpx-ouVZP9blvaZc9YngGsUAqQKVNRaiFOYl');
 
 async function onchainTestScript() {
     console.log('Contract address : ', contractAddress);
@@ -54,7 +55,7 @@ async function onchainTestScript() {
     // Trade Contract Address getting
 
     const tuple_builder = new TupleBuilder();
-    tuple_builder.writeAddress(adminAddress);
+    tuple_builder.writeAddress(buyerAddress);
     tuple_builder.writeAddress(nft_address);
 
     latestBlock = await client4.getLastBlock();
