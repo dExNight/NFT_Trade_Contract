@@ -51,6 +51,21 @@ export class MasterSeller implements Contract {
         });
     }
 
+    // Cancelling new trade
+    async sendCancelTradeRequest(provider: ContractProvider, via: Sender, value: bigint, query_id: number, nft_address: Address) {
+        const op_code: number = 0x05438d94;
+
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(op_code, 32)
+                .storeUint(query_id, 64)
+                .storeAddress(nft_address)
+                .endCell(),
+        });
+    }
+
     // GET methods
     async getTradeContractAddress(provider: ContractProvider, nft_buyer_address: Address, nft_item_address: Address) {
         const tuple_builder = new TupleBuilder();

@@ -96,6 +96,54 @@ int min_nft_price() asm "100000000 PUSHINT"; ;; 0.1 TON
     }
 
     ;; TODO: cancel bid
+
+    if (op == op::cancel_trade_request()) {
+        slice nft_address = in_msg_body~load_msg_addr();
+
+        cell state_init = calculate_nft_seller_state_init(nft_seller_code, my_address(), sender_address, nft_address);
+        slice nft_seller_address = calculate_nft_seller_address(workchain(), state_init);
+
+        int forward_amount = msg_value;
+        int contract_balance_before = my_balance - msg_value;
+
+        if (contract_balance_before < min_tons_for_storage()) {
+            forward_amount = forward_amount - (min_tons_for_storage() - contract_balance_before);
+        }
+
+        cell msg_body = begin_cell()
+                        .store_uint(op::cancel_trade(), 32)
+                        .store_uint(query_id, 64)
+                        .end_cell();
+
+        var msg = begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(nft_seller_address)
+                .store_coins(forward_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
+                .store_uint(1, 1)
+                .store_ref(msg_body);
+
+        send_raw_message(msg.end_cell(), 0);
+    }
+
+    if (op == op::finished_trade_notification()) {
+        int forward_amount = msg_value;
+        int contract_balance_before = my_balance - msg_value;
+
+        if (contract_balance_before < min_tons_for_storage()) {
+            forward_amount = forward_amount - (min_tons_for_storage() - contract_balance_before);
+        }
+
+        var msg = begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(admin_address)
+                .store_coins(forward_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(0, 32)
+                .store_slice("Finished Trade Notification (Enjoy ur fee)");
+
+        send_raw_message(msg.end_cell(), 0);
+    }
 }
 
 

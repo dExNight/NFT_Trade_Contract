@@ -76,16 +76,16 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
     );
 }
 
-() finish_trade(int my_balance, slice ms_address, slice nft_buyer, slice nft_item, slice admin_address) impure {
+() finish_trade(int my_balance, slice ms_address, slice nft_buyer, slice nft_item, int query_id) impure {
     int forward_amount = my_balance - min_tons_for_storage();
 
     var msg = begin_cell()
             .store_uint(0x18, 6)
-            .store_slice(admin_address)
+            .store_slice(ms_address)
             .store_coins(forward_amount)
             .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-            .store_uint(0, 32)
-            .store_slice("Closed Trade Notification");
+            .store_uint(op::finished_trade_notification(), 32)
+            .store_uint(query_id, 64);
 
     send_raw_message(msg.end_cell(), 0);
 
@@ -112,8 +112,6 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
             .store_slice("Trade bid canceled");
     
     send_raw_message(msg.end_cell(), 0);
-
-    ;; store_data(0, ms_address, nft_buyer, nft_item, null(), null(), null(), null());
 
     set_data(
         begin_cell()
@@ -237,7 +235,7 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
         cell_slice~load_coins(); ;; skip ihr_fee
         int fwd_fee = muldiv(cell_slice~load_coins(), 3, 2); ;; we use message fwd_fee for estimation of forward_payload costs
 
-        finish_trade((my_balance - (nft_price - trade_fee) - fwd_fee), master_address, nft_buyer_address, nft_item_address, master_address);
+        finish_trade((my_balance - (nft_price - trade_fee) - fwd_fee), master_address, nft_buyer_address, nft_item_address, query_id);
         return();
     }
 

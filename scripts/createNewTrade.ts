@@ -6,7 +6,7 @@ import qrcode from 'qrcode-terminal';
 
 const adminAddress: Address = Address.parse('0QAAeHjRVfqPfRIjkPlxcv-OAffJUfAxWSu6RFli4FUeUCRn');
 const contractAddress: Address = Address.parse('EQB0Q3nSlNCiijuOxhfceIwhGhQDqEBBCjiYjM7T5_ssbw-G');
-const nft_address: Address = Address.parse('EQDfuoFQM7hJ-TA7jkME-WQIcMakHMs-4KTKUNYF6TfeAsnT');
+const nft_address: Address = Address.parse('EQCydlfkhqDBcrCvsSJEpUMHoOb1Xs2SeWCCcQKktpY7ll2Y');
 
 async function onchainTestScript() {
     console.log('Contract address : ', contractAddress);

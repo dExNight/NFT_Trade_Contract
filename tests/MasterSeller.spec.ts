@@ -1,5 +1,5 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Address, Cell, beginCell, toNano } from '@ton/core';
+import { Address, Cell, beginCell, fromNano, toNano } from '@ton/core';
 import { MasterSeller } from '../wrappers/MasterSeller';
 import { NFT_Collection } from '../wrappers/NFT_Collection';
 import { NFT_Item } from '../wrappers/NFT_Item';
@@ -176,6 +176,8 @@ describe('MasterSeller', () => {
 
         console.log('Trade data: ', tradeData);
 
+        const adminBalanceBefore = await adminWallet.getBalance();
+
         const transferResult = await nftItemContract.sendTransferRequest(
             sellerWallet.getSender(),
             toNano(0.1),
@@ -208,8 +210,93 @@ describe('MasterSeller', () => {
             value: toNano(nft_price - 1),
         });
 
+        expect(transferResult.transactions).toHaveTransaction({
+            from: masterSellerContract.address,
+            to: adminWallet.address,
+            success: true
+        });
+
+        const adminBalanceAfter = await adminWallet.getBalance();
+        console.log("Admin received: ", fromNano(adminBalanceAfter - adminBalanceBefore));
+
         const tradeData2 = await tradeContract.getTradeData();
 
         console.log('Trade data: ', tradeData2);
     });
+    
+    it('Trade may be cancelled', async () => {
+        const buyerWallet = await blockchain.treasury('buyer');
+
+        const query_id = 1;
+        const nft_price = 10;
+        
+        // We do not even need to mint nft item, just create a trade and cancel it
+        const nftItemAddress = await nftCollectionContract.getNftAddress(0);
+        const tradeContractAddress = await masterSellerContract.getTradeContractAddress(
+            buyerWallet.address,
+            nftItemAddress,
+        );
+
+        console.log('Buyer address: ', buyerWallet.address);
+        console.log('Item address: ', nftItemAddress);
+        console.log('Trade contract address: ', tradeContractAddress);
+
+        console.log("Master Seller's address: ", masterSellerContract.address);
+        console.log("NFT Collection's address: ", nftCollectionContract.address);
+
+        // Trade initialization
+
+        const createTradeResult = await masterSellerContract.sendCreateTradeRequest(
+            buyerWallet.getSender(),
+            toNano(nft_price),
+            query_id,
+            nft_price,
+            nftItemAddress,
+        );
+
+        expect(createTradeResult.transactions).toHaveTransaction({
+            from: buyerWallet.address,
+            to: masterSellerContract.address,
+            success: true,
+        });
+
+        expect(createTradeResult.transactions).toHaveTransaction({
+            from: masterSellerContract.address,
+            to: tradeContractAddress,
+            success: true,
+        });
+
+        const buyerBalanceBefore = await buyerWallet.getBalance();
+
+        const cancelTradeResult = await masterSellerContract.sendCancelTradeRequest(
+            buyerWallet.getSender(),
+            toNano("0.015"),
+            query_id,
+            nftItemAddress,
+        );
+
+        expect(cancelTradeResult.transactions).toHaveTransaction({
+            from: buyerWallet.address,
+            to: masterSellerContract.address,
+            success: true,
+        });
+
+        expect(cancelTradeResult.transactions).toHaveTransaction({
+            from: masterSellerContract.address,
+            to: tradeContractAddress,
+            success: true,
+        });
+
+        expect(cancelTradeResult.transactions).toHaveTransaction({
+            from: tradeContractAddress,
+            to: buyerWallet.address,
+            success: true,
+        });
+
+        const buyerBalanceAfter = await buyerWallet.getBalance();
+
+        console.log("Buyer received: ", fromNano(buyerBalanceAfter - buyerBalanceBefore));
+        
+    });
+
 });

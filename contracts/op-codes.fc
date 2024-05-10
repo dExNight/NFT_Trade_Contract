@@ -2,4 +2,6 @@ int op::create_trade() asm "0x3ffc3d10 PUSHINT";
 int op::excesses() asm "0xd53276db PUSHINT";
 int op::ownership_assigned() asm "0x05138d91 PUSHINT";
 int op::transfer() asm "0x5fcc3d14 PUSHINT";
-int op::cancel_trade() asm "0x05138d91 PUSHINT";
+int op::cancel_trade() asm "0x02239d91 PUSHINT";
+int op::cancel_trade_request() asm "0x05438d94 PUSHINT";
+int op::finished_trade_notification() asm "0xd53336db PUSHINT";
