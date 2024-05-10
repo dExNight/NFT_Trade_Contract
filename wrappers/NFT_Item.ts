@@ -26,10 +26,9 @@ export class NFT_Item implements Contract {
         value: bigint,
         query_id: number,
         new_owner_address: Address,
+        forward_amount: number
     ) {
         const op_code: number = 0x5fcc3d14;
-
-        const forward_amount: bigint = toNano('0.01');
 
         await provider.internal(via, {
             value,
@@ -40,7 +39,7 @@ export class NFT_Item implements Contract {
                 .storeAddress(new_owner_address)
                 .storeAddress(via.address)
                 .storeUint(0, 1)
-                .storeCoins(forward_amount)
+                .storeCoins(toNano(forward_amount))
                 .storeUint(1, 1)
                 .endCell(),
         });

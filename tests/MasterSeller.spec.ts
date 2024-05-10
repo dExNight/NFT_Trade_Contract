@@ -183,6 +183,7 @@ describe('MasterSeller', () => {
             toNano(0.1),
             query_id,
             tradeContractAddress,
+            0.01,
         );
 
         expect(transferResult.transactions).toHaveTransaction({

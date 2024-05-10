@@ -2,7 +2,7 @@
 #include "op-codes.fc";
 
 int min_tons_for_storage() asm "50000000 PUSHINT"; ;; 0.05 TON
-int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
+int nft_forward_amount() asm "10000000 PUSHINT"; ;; 0.01 TON
 
 ;; Initiated contract means that bid for NFT item is made, but not yet accepted by seller
 (int, slice, slice, slice, int, int, int, slice) load_data() {
@@ -127,6 +127,24 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
     return();
 }
 
+(int) getForwardAmount(int my_balance, int msg_value) impure inline {
+    int contract_balance_before = my_balance - msg_value;
+    int forward_amount = msg_value;
+
+    if (contract_balance_before < min_tons_for_storage()) {
+        forward_amount = forward_amount - (min_tons_for_storage() - contract_balance_before);
+    }
+
+    return forward_amount;
+}
+
+;; Exception codes:
+;; 500 - only master contract can use this method
+;; 777 - something went wrong (contact admin)
+;; 404 - only nft item address can call this method
+;; 100 - trade is not initialized yet
+;; 200 - trade is already finalized (nft item is alredy transfered to Trade contract)
+;; 300 - trade is not finalized yet
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     if (in_msg_body.slice_empty?()) { ;; ignore empty messages
         return ();
@@ -145,15 +163,17 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
     int op = in_msg_body~load_uint(32);
     int query_id = in_msg_body~load_uint(64);
 
-    int contract_balance_before = my_balance - msg_value;
-    int forward_amount = msg_value;
+    int forward_amount = getForwardAmount(my_balance, msg_value);
 
-    if (contract_balance_before < min_tons_for_storage()) {
-        forward_amount = forward_amount - (min_tons_for_storage() - contract_balance_before);
-    }
+    cell_slice~load_msg_addr(); ;; skip dst
+    cell_slice~load_coins(); ;; skip value
+    cell_slice~skip_bits(1); ;; skip extracurrency collection
+    cell_slice~load_coins(); ;; skip ihr_fee
+    int fwd_fee = muldiv(cell_slice~load_coins(), 3, 2); ;; we use message fwd_fee for estimation of forward_payload costs
+
 
     if (op == op::create_trade()) {
-        throw_unless(999, equal_slices(sender_address, master_address));
+        throw_unless(500, equal_slices(sender_address, master_address));
         
         if (init?) {
             var msg = begin_cell()
@@ -179,17 +199,16 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
     }
     
     if (op == op::ownership_assigned()) {
-        throw_unless(555, equal_slices(nft_item_address, sender_address));
-        throw_unless(333, init?);
-        throw_if(666, trade_finilized);
+        throw_unless(404, equal_slices(nft_item_address, sender_address));
+
+        throw_unless(100, init?);
+        throw_if(200, trade_finilized);
 
         throw_unless(777, my_balance > nft_price - trade_fee);
 
         slice previous_owner = in_msg_body~load_msg_addr();
 
         store_data(1, master_address, nft_buyer_address, nft_item_address, nft_price, trade_fee, 1, previous_owner);
-
-        ;; TODO send nft to buyer
 
         var msg_body = begin_cell()
                 .store_uint(op::transfer(), 32)
@@ -216,9 +235,9 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
     
     ;; NFT transfered successfully
     if (op == op::excesses()) {
-        throw_unless(555, equal_slices(nft_item_address, sender_address));
-        throw_unless(333, init?);
-        throw_unless(666, trade_finilized);
+        throw_unless(404, equal_slices(nft_item_address, sender_address));
+        throw_unless(100, init?);
+        throw_unless(300, trade_finilized);
 
         throw_unless(777, my_balance > nft_price - trade_fee);
         
@@ -232,21 +251,15 @@ int nft_forward_amount() asm "5000000 PUSHINT"; ;; 0.005 TON
 
         send_raw_message(send_money_msg.end_cell(), 1);
 
-        cell_slice~load_msg_addr(); ;; skip dst
-        cell_slice~load_coins(); ;; skip value
-        cell_slice~skip_bits(1); ;; skip extracurrency collection
-        cell_slice~load_coins(); ;; skip ihr_fee
-        int fwd_fee = muldiv(cell_slice~load_coins(), 3, 2); ;; we use message fwd_fee for estimation of forward_payload costs
-
         finish_trade((my_balance - (nft_price - trade_fee) - fwd_fee), master_address, nft_buyer_address, nft_item_address, query_id);
         return();
     }
 
     ;; TODO cancel bid
     if (op == op::cancel_trade()) {
-        throw_unless(999, equal_slices(sender_address, master_address));
-        throw_unless(333, init?);
-        throw_if(666, trade_finilized);
+        throw_unless(500, equal_slices(sender_address, master_address));
+        throw_unless(100, init?);
+        throw_if(200, trade_finilized);
         
         return_trade_bid(my_balance, master_address, nft_buyer_address, nft_item_address, nft_price);
         return();
